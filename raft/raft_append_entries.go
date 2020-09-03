@@ -29,21 +29,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	} else if len(rf.log)-1 < args.PrevLogIndex || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
 		DPrintf("[%d] received append entries with mismatching log from [%d]", rf.me, args.LeaderId)
 		reply.Success = false
-		if len(rf.log)-1 < args.PrevLogIndex {
-			reply.Xlen = len(rf.log)
-		} else {
+		reply.Xterm = -1
+		reply.Xlen = len(rf.log)
+		if len(rf.log)-1 >= args.PrevLogIndex {
 			reply.Xterm = rf.log[args.PrevLogIndex].Term
 			i := args.PrevLogIndex - 1
 			for rf.log[i].Term == reply.Xterm {
 				i--
 			}
-			reply.Xindex = i
+			reply.Xindex = i + 1
 		}
 	} else {
 		if rf.state != Follower {
 			DPrintf("[%d] becoming follower on getting valid heartbeat from [%d]", rf.me, args.LeaderId)
 		}
-		rf.lastHeartbeat = time.Now()
 		rf.currentTerm = args.Term
 		rf.state = Follower
 		startIndex := args.PrevLogIndex + 1
@@ -57,7 +56,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			}
 		}
 		reply.Success = true
-		// rf.commitEntries(args.LeaderCommit)
+		if len(args.Entries) != 0 || args.PrevLogIndex >= args.LeaderCommit {
+			rf.commitEntries(args.LeaderCommit)
+		} else {
+			rf.commitEntries(args.PrevLogIndex)
+		}
+		rf.lastHeartbeat = time.Now()
 	}
 }
 
