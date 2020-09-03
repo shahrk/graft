@@ -12,8 +12,8 @@ import (
 //
 
 const (
-	ElectionTimeoutMin = 300
-	ElectionTimeoutMax = 600
+	ElectionTimeoutMin = 500
+	ElectionTimeoutMax = 800
 )
 
 type RequestVoteArgs struct {
@@ -45,10 +45,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		} else if args.Term > rf.currentTerm {
 			reply.VoteGranted = true
 			rf.votedFor = &args.CandidateId
+		} else {
+			DPrintf("[%d] already voted for %d for term %d", rf.me, *rf.votedFor, rf.currentTerm)
 		}
 	} else {
 		DPrintf("[%d] denied vote to [%d] with outdated log", rf.me, args.CandidateId)
 	}
+	rf.currentTerm = args.Term
 }
 
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply, done chan bool) {
@@ -78,7 +81,7 @@ func (rf *Raft) startElectionTicker() {
 			rf.mu.Lock()
 		}
 		rf.mu.Unlock()
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -87,6 +90,9 @@ func getElectionTimeout() time.Duration {
 }
 
 func (rf *Raft) conductElection(args *RequestVoteArgs) {
+	// assume leader heartbeat to avoid instant reelection in case we loose
+	rf.lastHeartbeat = time.Now()
+	DPrintf("[%d] conducting elections for term %d", rf.me, args.Term)
 	cond := sync.NewCond(&rf.mu)
 	votes := 1
 	replies := 1
@@ -135,9 +141,9 @@ func (rf *Raft) conductElection(args *RequestVoteArgs) {
 	if rf.state == Candidate && votes > len(rf.peers)/2 {
 		DPrintf("[%d] won the election for term %d by getting %d votes out of %d", rf.me, args.Term, votes, len(rf.peers))
 		rf.state = Leader
-		rf.mu.Unlock()
 		rf.initializeLeader()
-		rf.sendPeriodicHeartbeats()
+		rf.mu.Unlock()
+		go rf.sendPeriodicHeartbeats()
 	} else {
 		DPrintf("[%d] lost the election for term %d or already discovered another leader for a greater term", rf.me, args.Term)
 		rf.mu.Unlock()
