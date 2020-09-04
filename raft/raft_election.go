@@ -30,6 +30,7 @@ type RequestVoteReply struct {
 
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	defer rf.mu.Unlock()
+	defer rf.persist()
 	rf.mu.Lock()
 	reply.Term = rf.CurrentTerm
 	if rf.CurrentTerm > args.Term {

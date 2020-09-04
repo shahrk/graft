@@ -93,15 +93,18 @@ func (rf *Raft) GetState() (int, bool) {
 	defer rf.mu.Unlock()
 	rf.mu.Lock()
 	DPrintf("[%d] Term: %d, State: %d, Heartbeat: %v", rf.me, rf.CurrentTerm, rf.state, rf.lastHeartbeat)
+
+	term := rf.CurrentTerm
+	isleader := rf.state == Leader
+	return term, isleader
+}
+
+func (rf *Raft) printLogs() {
 	logs := ""
 	for i := range rf.Log {
 		logs += fmt.Sprintf("%+v ", rf.Log[i].Command)
 	}
 	DPrintf(logs)
-
-	term := rf.CurrentTerm
-	isleader := rf.state == Leader
-	return term, isleader
 }
 
 //
@@ -114,13 +117,11 @@ func (rf *Raft) persist() {
 	// Example:
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
-	rf.mu.Lock()
 	if e.Encode(rf.CurrentTerm) != nil ||
-		e.Encode(rf.VotedFor) != nil ||
+		(rf.VotedFor != nil && e.Encode(rf.VotedFor) != nil) ||
 		e.Encode(rf.Log) != nil {
-		DPrintf("[%d] error while persisting state", rf.me)
+		DPrintf("[%d] error while encoding state", rf.me)
 	}
-	rf.mu.Unlock()
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
 }
@@ -148,11 +149,10 @@ func (rf *Raft) readPersist(data []byte) {
 		} else {
 			DPrintf("[%d] read currentTerm - %d, votedFor - Nil", rf.me, votedFor)
 		}
-		rf.mu.Lock()
 		rf.CurrentTerm = currentTerm
 		rf.VotedFor = votedFor
 		rf.Log = log
-		rf.mu.Unlock()
+		rf.printLogs()
 	}
 }
 
@@ -229,7 +229,7 @@ func (rf *Raft) beginConsensus(index int) {
 						}
 					} else {
 						// missing entry
-						rf.nextIndex[i] = reply.Xlen - 1
+						rf.nextIndex[i] = reply.Xlen
 					}
 					rf.mu.Unlock()
 				}
@@ -243,6 +243,7 @@ func (rf *Raft) beginConsensus(index int) {
 	}
 	if rf.state == Leader && currentTerm == rf.CurrentTerm {
 		rf.commitEntries(index)
+		rf.persist()
 	} else {
 		DPrintf("[%d] impeached before reaching consensus for index-%d in term-%d", rf.me, index, currentTerm)
 	}
@@ -258,6 +259,7 @@ func (rf *Raft) commitEntries(index int) {
 	}
 	if updatedCommitIndex >= prevCommitIndex+1 {
 		DPrintf("[%d] committing entries from %d to %d", rf.me, prevCommitIndex+1, updatedCommitIndex)
+		rf.printLogs()
 		rf.commitIndex = updatedCommitIndex
 	} else {
 		return
