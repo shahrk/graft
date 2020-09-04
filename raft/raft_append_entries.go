@@ -22,19 +22,19 @@ type AppendEntriesReply struct {
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	defer rf.mu.Unlock()
 	rf.mu.Lock()
-	reply.Term = rf.currentTerm
-	if args.Term < rf.currentTerm {
+	reply.Term = rf.CurrentTerm
+	if args.Term < rf.CurrentTerm {
 		DPrintf("[%d] received append entries from psuedo leader [%d]", rf.me, args.LeaderId)
 		reply.Success = false
-	} else if len(rf.log)-1 < args.PrevLogIndex || rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
+	} else if len(rf.Log)-1 < args.PrevLogIndex || rf.Log[args.PrevLogIndex].Term != args.PrevLogTerm {
 		DPrintf("[%d] received append entries with mismatching log from [%d]", rf.me, args.LeaderId)
 		reply.Success = false
 		reply.Xterm = -1
-		reply.Xlen = len(rf.log)
-		if len(rf.log)-1 >= args.PrevLogIndex {
-			reply.Xterm = rf.log[args.PrevLogIndex].Term
+		reply.Xlen = len(rf.Log)
+		if len(rf.Log)-1 >= args.PrevLogIndex {
+			reply.Xterm = rf.Log[args.PrevLogIndex].Term
 			i := args.PrevLogIndex - 1
-			for rf.log[i].Term == reply.Xterm {
+			for rf.Log[i].Term == reply.Xterm {
 				i--
 			}
 			reply.Xindex = i + 1
@@ -43,15 +43,15 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if rf.state != Follower {
 			DPrintf("[%d] becoming follower on getting valid heartbeat from [%d]", rf.me, args.LeaderId)
 		}
-		rf.currentTerm = args.Term
+		rf.CurrentTerm = args.Term
 		rf.state = Follower
 		startIndex := args.PrevLogIndex + 1
 		for i := startIndex; i-startIndex < len(args.Entries); i++ {
-			if len(rf.log)-1 < i {
-				rf.log = append(rf.log, args.Entries[i-startIndex:]...)
+			if len(rf.Log)-1 < i {
+				rf.Log = append(rf.Log, args.Entries[i-startIndex:]...)
 				break
-			} else if rf.log[i].Term != args.Entries[i-startIndex].Term {
-				rf.log = rf.log[:i]
+			} else if rf.Log[i].Term != args.Entries[i-startIndex].Term {
+				rf.Log = rf.Log[:i]
 				i--
 			}
 		}

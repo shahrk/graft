@@ -31,27 +31,27 @@ type RequestVoteReply struct {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	defer rf.mu.Unlock()
 	rf.mu.Lock()
-	reply.Term = rf.currentTerm
-	if rf.currentTerm > args.Term {
+	reply.Term = rf.CurrentTerm
+	if rf.CurrentTerm > args.Term {
 		reply.VoteGranted = false
 		return
 	}
-	if args.LastLogTerm > rf.log[len(rf.log)-1].Term ||
-		(args.LastLogTerm == rf.log[len(rf.log)-1].Term &&
-			args.LastLogIndex >= len(rf.log)-1) {
-		if rf.votedFor == nil {
+	if args.LastLogTerm > rf.Log[len(rf.Log)-1].Term ||
+		(args.LastLogTerm == rf.Log[len(rf.Log)-1].Term &&
+			args.LastLogIndex >= len(rf.Log)-1) {
+		if rf.VotedFor == nil {
 			reply.VoteGranted = true
-			rf.votedFor = &args.CandidateId
-		} else if args.Term > rf.currentTerm {
+			rf.VotedFor = &args.CandidateId
+		} else if args.Term > rf.CurrentTerm {
 			reply.VoteGranted = true
-			rf.votedFor = &args.CandidateId
+			rf.VotedFor = &args.CandidateId
 		} else {
-			DPrintf("[%d] already voted for %d for term %d", rf.me, *rf.votedFor, rf.currentTerm)
+			DPrintf("[%d] already voted for %d for term %d", rf.me, *rf.VotedFor, rf.CurrentTerm)
 		}
 	} else {
 		DPrintf("[%d] denied vote to [%d] with outdated log", rf.me, args.CandidateId)
 	}
-	rf.currentTerm = args.Term
+	rf.CurrentTerm = args.Term
 }
 
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply, done chan bool) {
@@ -67,14 +67,14 @@ func (rf *Raft) startElectionTicker() {
 			return
 		}
 		if rf.state != Leader && time.Since(rf.lastHeartbeat) > getElectionTimeout() {
-			rf.currentTerm++
+			rf.CurrentTerm++
 			rf.state = Candidate
-			rf.votedFor = &rf.me
+			rf.VotedFor = &rf.me
 			args := RequestVoteArgs{
-				Term:         rf.currentTerm,
+				Term:         rf.CurrentTerm,
 				CandidateId:  rf.me,
-				LastLogIndex: len(rf.log) - 1,
-				LastLogTerm:  rf.log[len(rf.log)-1].Term,
+				LastLogIndex: len(rf.Log) - 1,
+				LastLogTerm:  rf.Log[len(rf.Log)-1].Term,
 			}
 			rf.mu.Unlock()
 			rf.conductElection(&args)
