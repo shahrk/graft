@@ -188,7 +188,9 @@ func (rf *Raft) beginConsensus(index int) {
 						}
 					}
 					replies++
-					rf.nextIndex[i] = index + 1
+					if rf.nextIndex[i] < index+1 {
+						rf.nextIndex[i] = index + 1
+					}
 					return
 				} else if reply.Term > currentTerm {
 					defer rf.mu.Unlock()
