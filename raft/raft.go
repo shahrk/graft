@@ -100,6 +100,9 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 func (rf *Raft) printLogs() {
+	if len(rf.Log) > 20 {
+		return
+	}
 	logs := ""
 	for i := range rf.Log {
 		logs += fmt.Sprintf("%+v ", rf.Log[i].Command)
@@ -192,14 +195,7 @@ func (rf *Raft) beginConsensus(index int) {
 				} else if reply.Success {
 					defer rf.mu.Unlock()
 					rf.mu.Lock()
-					switch rf.Log[index].Command.(type) {
-					default:
-						DPrintf("[%d] Append Entries on server [%d] successful", rf.me, i)
-					case int:
-						for k := range args.Entries {
-							DPrintf("[%d] sent command %+v to [%d]", rf.me, args.Entries[k].Command, i)
-						}
-					}
+					DPrintf("[%d] Append Entries on server [%d] successful", rf.me, i)
 					replies++
 					if rf.nextIndex[i] < index+1 {
 						rf.nextIndex[i] = index + 1
