@@ -29,7 +29,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 	} else if len(rf.Log)-1 < args.PrevLogIndex || rf.Log[args.PrevLogIndex].Term != args.PrevLogTerm {
 		DPrintf("[%d] received append entries with mismatching log from [%d]", rf.me, args.LeaderId)
-		if (len(rf.Log)-1 < args.PrevLogIndex) {
+		if len(rf.Log)-1 < args.PrevLogIndex {
 			DPrintf("[%d] last index %d less than prev index in args %d", rf.me, len(rf.Log)-1, args.PrevLogIndex)
 		} else {
 			DPrintf("[%d] term of last index %d not same as prev log term in args %d", rf.me, rf.Log[args.PrevLogIndex].Term, args.PrevLogTerm)
@@ -68,6 +68,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.commitEntries(args.PrevLogIndex)
 		}
 		rf.lastHeartbeat = time.Now()
+		rf.LeaderId = args.LeaderId
 	}
 }
 

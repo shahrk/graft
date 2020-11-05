@@ -1,15 +1,17 @@
 package kvraft
 
 import (
-	"../labgob"
-	"../labrpc"
 	"log"
-	"../raft"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"../labgob"
+	"../labrpc"
+	"../raft"
 )
 
-const Debug = 0
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -18,11 +20,13 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Type  string
+	Key   string
+	Value string
 }
 
 type KVServer struct {
@@ -35,14 +39,82 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
+	store map[string]string
 }
 
-
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
+	defer DPrintf("%+v", reply.Err)
+	op := Op{Key: args.Key, Type: "get"}
+	idx, _, isLeader := kv.rf.Start(op)
+	if !isLeader {
+		reply.Err = "Not the leader"
+		return
+	} else {
+		reply.Err = ""
+	}
+	for msg := range kv.applyCh {
+		DPrintf("got msg %+v on channel. expecting at index %d", msg, idx)
+		if entry, ok := msg.Command.(Op); ok {
+			if entry.Type == "put" {
+				kv.store[entry.Key] = entry.Value
+			} else if entry.Type == "append" {
+				kv.store[entry.Key] += entry.Value
+			}
+			if msg.CommandIndex == idx {
+				if entry == op {
+					reply.Value = kv.store[args.Key]
+					DPrintf(reply.Value)
+					DPrintf("responding")
+					return
+				} else {
+					reply.Err = "Mismatching command found in log entry"
+					return
+				}
+			} else if msg.CommandIndex > idx {
+				reply.Err = "Found higher index log entry"
+				return
+			}
+		} else {
+			reply.Err = "Mismatching command found in log entry"
+			return
+		}
+	}
 	// Your code here.
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
+	op := Op{Key: args.Key, Type: args.Op, Value: args.Value}
+	idx, _, isLeader := kv.rf.Start(op)
+	if !isLeader {
+		reply.Err = "Not the leader"
+		DPrintf("responding with %+v", reply)
+		return
+	}
+	for msg := range kv.applyCh {
+		DPrintf("got msg %+v on channel. expecting at index %d", msg, idx)
+		if entry, ok := msg.Command.(Op); ok {
+			if entry.Type == "put" {
+				kv.store[entry.Key] = entry.Value
+			} else if entry.Type == "append" {
+				kv.store[entry.Key] += entry.Value
+			}
+			if msg.CommandIndex == idx {
+				if entry != op {
+					reply.Err = "Mismatching command found in log entry"
+				} else {
+					reply.Err = ""
+				}
+				DPrintf("responding with %+v", reply)
+				return
+			} else if msg.CommandIndex > idx {
+				reply.Err = "Found higher index log entry"
+				return
+			}
+		} else {
+			reply.Err = "Mismatching command found in log entry"
+			return
+		}
+	}
 	// Your code here.
 }
 
@@ -65,6 +137,27 @@ func (kv *KVServer) Kill() {
 func (kv *KVServer) killed() bool {
 	z := atomic.LoadInt32(&kv.dead)
 	return z == 1
+}
+
+func (kv *KVServer) scout() {
+	for {
+		select {
+		case msg, open := <-kv.applyCh:
+			if !open {
+				DPrintf("Channel closed")
+				return
+			}
+			if op, ok := msg.Command.(Op); ok {
+				if op.Type == "put" {
+					kv.store[op.Key] = op.Value
+				} else if op.Type == "append" {
+					kv.store[op.Key] += op.Value
+				}
+			} else {
+				DPrintf("Unkown command found in log entry")
+			}
+		}
+	}
 }
 
 //
@@ -96,6 +189,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
+	// go kv.scout()
 
+	time.Sleep(100 * time.Millisecond)
 	return kv
 }

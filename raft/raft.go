@@ -84,6 +84,7 @@ type Raft struct {
 	Log           []*Log              // log entries. Persisted
 	nextIndex     []int               // For each peer, the log index to be sent out
 	matchIndex    []int               // For each peer, index of highest log entry known to be replicated on server
+	LeaderId      int
 }
 
 // return currentTerm and whether this server
@@ -289,12 +290,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := rf.state == Leader
 	if isLeader {
 		index = len(rf.Log)
-		switch command.(type) {
-		default:
-			DPrintf("[%d] processing command from client at index %d", rf.me, index)
-		case int:
-			DPrintf("[%d] processing command from client - %+v at index %d", rf.me, command, index)
-		}
+		DPrintf("[%d] processing command from client - %+v at index %d", rf.me, command, index)
 		term = rf.CurrentTerm
 		logEntry := Log{Command: command, Term: term}
 		rf.Log = append(rf.Log, &logEntry)

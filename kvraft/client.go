@@ -1,9 +1,12 @@
 package kvraft
 
-import "../labrpc"
-import "crypto/rand"
-import "math/big"
+import (
+	"crypto/rand"
+	"math/big"
+	"time"
 
+	"../labrpc"
+)
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
@@ -37,9 +40,33 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
-
 	// You will have to modify this function.
-	return ""
+	args := GetArgs{Key: key}
+	ok := false
+	for reply.Value == "" {
+		DPrintf("Retrying for all")
+		for i := range ck.servers {
+			reply := GetReply{}
+			ok = ck.servers[i].Call("KVServer.Get", &args, &reply)
+			if ok {
+				DPrintf("got reply %+v", reply)
+				if reply.Err != "" {
+					DPrintf("%v", reply.Err)
+					continue
+				}
+				break
+			} else {
+				DPrintf("failed rpc")
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !ok || (reply.Err != "") {
+		DPrintf("Error fetching value for key %v - %+v", key, reply.Err)
+	} else {
+		DPrintf("Fetched value %v for key %v", reply.Value, key)
+	}
+	return reply.Value
 }
 
 //
@@ -54,6 +81,24 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	args := PutAppendArgs{Key: key, Value: value, Op: op}
+	done := false
+	for !done {
+		for i := range ck.servers {
+			reply := PutAppendReply{}
+			ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
+			DPrintf("%+v", reply)
+			if ok {
+				if reply.Err != "" {
+					DPrintf("%v", reply.Err)
+					continue
+				}
+				done = true
+				break
+			}
+		}
+	}
+	DPrintf("Added KV pair %v:%v", key, value)
 }
 
 func (ck *Clerk) Put(key string, value string) {
